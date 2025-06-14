@@ -1,0 +1,14 @@
+def spearmans_rho(x, y):
+  if len(x) != len(y):
+    raise ValueError('x and y must be the same length!')
+  n = len(x)
+  ranked_x = {value: i + 1 for i, value in enumerate(sorted(set(x)))}
+  ranked_y = {value: i + 1 for i, value in enumerate(sorted(set(y)))}
+    # Calculate the differences and squares of differences
+  d_squared = sum((ranked_x[x[i]] - ranked_y[y[i]]) ** 2 for i in range(len(x)))
+    # Calculate spearmans rho
+  n = len(x)
+  numerator = 6 * d_squared
+  denominator = n * (n ** 2 - 1)
+  rho = 1 - numerator / denominator
+  return rho
