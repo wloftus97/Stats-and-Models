@@ -1,0 +1,129 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jun 14 21:38:49 2025
+
+@author: wglof
+"""
+
+# This is a showcase of one way I may post-process EEG data.
+
+# Dataset used: Virginie Sterpenich and Mojca KM van Schie and Maximilien Catsiyannis and Avinash Ramyead and Stephen Perrig and Hee-Deok Yang and Dimitri Van De Ville and Sophie Schwartz (2021). Reward biases spontaneous neural reactivation during sleep. OpenNeuro. [Dataset] doi: 10.18112/openneuro.ds003574.v1.0.2
+
+import mne
+from mne.annotations import Annotations
+from mne import events_from_annotations
+from mne.preprocessing import ICA
+from mne.preprocessing import annotate_amplitude
+from mne.preprocessing import annotate_muscle_zscore
+from mne.preprocessing import annotate_movement
+from mne_icalabel import label_components
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import sklearn
+from mne_bids import BIDSPath, read_raw_bids
+
+
+# base_path = r"C:\Users\'user'\rest of pathway\'Sleep Reward Reactivation Data Folder Name'"
+base_path = r"C:\Users\wglof\Documents\Programming\Projects\Data Analyst\csv files\Sleep Reward Reactivation"
+
+# raw = {} # All participant dat will be stored here.
+
+# This loop can load up all eeg data sets in one go
+#for i in range(1,4): 
+  #  sub_id = f"sub-0{i}" 
+   # file_path = f"{base_path}\\{sub_id}\\eeg\\{sub_id}_task-rest_eeg.edf"
+
+   # try:
+     #   raw[sub_id] = mne.io.read_raw_edf(file_path, preload=True)
+      #  print(f"Loaded {sub_id} successfully.")
+   # except FileNotFoundError:
+       # print(f"File not found: {file_path}")
+        
+# raw_sub_01 = raw['sub-01']  
+
+# Commenting everything above out for and using one participants data for computational ease
+raw_sub_01 = mne.io.read_raw_edf(f"{base_path}\\sub-01\\eeg\\sub-01_task-rest_eeg.edf", preload=True)
+
+raw_sub_01
+
+raw_sub_01.filter(1, 100)
+
+# Mapping non-EEG channels to their proper types
+raw_sub_01.set_channel_types({
+    'ECG1': 'ecg',
+    'ECG2': 'ecg',
+    'EMG': 'emg',
+    'EOGh': 'eog',
+    'EOGv': 'eog'
+})
+
+# Now applying the EEG montage, ignoring missing channels
+montage = mne.channels.make_standard_montage("standard_1020")
+raw_sub_01.set_montage(montage, on_missing='ignore')
+
+# Now visualising only EEG sensors to see if the layout is correct
+raw_sub_01.plot_sensors(kind='topomap', show_names=True, ch_type='eeg')
+
+raw_sub_01.plot(n_channels=64)
+
+# Selecting average as the reference here for simplicity as this is a showcase of my understand of EEG post-processing
+# Would usually select a reference electrode here
+raw_sub_01.set_eeg_reference("average")
+
+# Running ica for a component per channel may lead to an unstable mixing matrix so mne recommends setting n_components=0.999999.
+# In this case 61 suffices
+ica = ICA(n_components=0.999999, random_state=0, method='infomax', fit_params=dict(extended=True))
+ica.fit(raw_sub_01)
+
+labels = label_components(raw_sub_01, ica, method='iclabel')
+
+ica.plot_components();
+
+ica_labels = labels["labels"]
+probs = labels["y_pred_proba"]
+number = list(range(0, 61))
+component_dicts = [
+    {i: { ica_labels[i]: float(probs[i]) }}
+    for i in range(len(ica_labels))
+] # Dictionaries do not allow for duplicate keys, by putting each label and its probability into its own dictionary and putting those into a list you can easily see the each component, its artefact and its probability.
+
+print(component_dicts)
+
+# This is to quickly put all high probability components into one section making it easier to read and thus identify artefact components.
+
+review_components = []
+
+for comp in component_dicts:
+    idx, label_dict = next(iter(comp.items()))
+    label, prob = next(iter(label_dict.items()))
+    if prob >= 0.95:
+        review_components.append({idx: {label: prob}})
+
+print(review_components)
+
+# The below lsit will contain the component numbers for ica components which DO NOT contain the label "brain" or "other" (do not know what noise is in "other"), at 95%probability of being correctly identified.
+
+filtered_components = [] 
+
+for comp in review_components:
+    idx, label_dict = next(iter(comp.items()))
+    label = next(iter(label_dict))
+    
+    if label not in ['brain', 'other']:
+        filtered_components.append(idx)
+
+# This removes the components that were identified to be artefacts.
+# You can do this manually with ica.exclude = ["insert component numbers here"]
+ica.exclude = filtered_components
+
+raw_sub_01.filter(1, 30) 
+
+raw_sub_01.plot();
+
+# This is applying the ica to the data and removing the artefact componenets
+clean_sub_01 = ica.apply(raw_sub_01.copy())
+
+raw_sub_01.plot();
+
+# This concludes the post-processing of this EEG dataset
