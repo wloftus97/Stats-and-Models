@@ -1,0 +1,12 @@
+def kendall_tau(x, y):
+  concordant_pairs = 0
+  discordant_pairs = 0
+  n = len(x)
+  for i in range(n):
+    for j in range(i+1, n):
+      if (x[i] < x[j] and y[i] < y[j]) or (x[i] > x[j] and y[i] > y[j]):
+        concordant_pairs += 1
+      elif (x[i] < x[j] and y[i] > y[j]) or (x[i] > x[j] and y[i] < y[j]):
+        discordant_pairs += 1
+  tau = (concordant_pairs - discordant_pairs) / (0.5 * n * (n - 1))
+  return tau
